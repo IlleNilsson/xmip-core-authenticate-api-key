@@ -10,12 +10,12 @@
 [workspace]
 
 [package]
-name = "xmip-template-rust"
+name = "xmip-core-authenticate-api-key"
 version = "0.1.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/IlleNilsson/xmip-template-rust"
-description = "Starter template for a Rust Xmip module repository."
+repository = "https://github.com/IlleNilsson/xmip-core-authenticate-api-key"
+description = "Authenticate by api-key: verifies a key against a key store, with its expiry."
 publish = false
 
 [lib]
