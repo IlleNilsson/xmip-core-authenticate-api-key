@@ -11,12 +11,7 @@
 //! hashed and compared with every key the name found, each in constant time
 //! and with no early exit.
 
-use authenticate::store::{KEY_LENGTH, constant_time_eq, hex, sha256};
-
-/// What a name that is a digest of the key starts with.
-pub const DIGEST_PREFIX: &str = "sha256:";
-/// How many bytes of the key's SHA-256 the digest form carries.
-pub const DIGEST_BYTES: usize = 8;
+use authenticate::store::{KEY_LENGTH, constant_time_eq, sha256};
 
 /// One key as the store holds it.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,7 +45,7 @@ impl Key {
     /// digits, as the first gate writes it for a key with no id in it.
     #[must_use]
     pub fn digest(&self) -> String {
-        format!("{DIGEST_PREFIX}{}", hex(&self.hash[..DIGEST_BYTES]))
+        identify::api_key::digest_name(&self.hash)
     }
 
     /// Whether `name` is this key's, in either form.
@@ -135,7 +130,10 @@ mod tests {
         assert_eq!(held.id(), "pk_7f3a");
         assert_eq!(held.expiry(), Some(42));
         assert_eq!(held.hash(), &hash);
-        assert_eq!(held.digest(), format!("sha256:{}", &hex(&hash)[..16]));
+        assert_eq!(
+            held.digest(),
+            format!("sha256:{}", &codec::hex::encode(&hash)[..16])
+        );
         assert!(store.holding(&held.digest(), &hash).is_some());
         assert!(!format!("{store:?}").contains("c2VjcmV0"));
     }
