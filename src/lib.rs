@@ -12,32 +12,42 @@
 //! compares it with each of them in constant time, and then reads the
 //! expiry. The name is only where to look: nothing is proven by it.
 //!
-//! The store is hashed at rest: what the node keeps is SHA-256 of the key,
-//! which is enough for a secret the node minted with full entropy and would
-//! not be for a password. An expired key is refused saying so, with the
-//! moment it expired; a key the name does not hold is refused without
-//! saying what the store holds.
+//! The keys are the capability's hashed secret store
+//! (`authenticate::secret`), each under the public id it was issued with:
+//! what the node keeps is SHA-256 of the key, which is enough for a secret
+//! the node minted with full entropy and would not be for a password. A
+//! key is named by that id or by its digest name, and which names a key
+//! answers to is this technology's ([`is_named`]). An expired key is
+//! refused saying so, with the moment it expired; a key the name does not
+//! hold is refused without saying what the store holds.
 
-pub mod store;
-
-pub use store::{Key, KeyStore};
-
-use authenticate::clock::{Clock, Window};
+use authenticate::AuthenticateError;
+use authenticate::Authenticator;
+use authenticate::clock::Clock;
+use authenticate::secret::{Secret, SecretStore};
 use authenticate::store::sha256;
-use authenticate::{AuthenticateError, Authenticator, Presented};
 use context::Verified;
+use identify::Presented;
 use identify::evidence::{self, API_KEY};
 use xcore::{Mechanism, mechanism};
 
+/// Whether `name` names this key: its id, or `sha256:` and the first eight
+/// bytes of its SHA-256 in hexadecimal, as the first gate writes a key with
+/// no id in it (`identify::api_key`).
+#[must_use]
+pub fn is_named(key: &Secret, name: &str) -> bool {
+    name == key.name() || name == identify::api_key::digest_name(key.hash())
+}
+
 /// Verifies an `api-key` claim with an `api-key` proof against a key store.
 pub struct ApiKeyAuthenticator {
-    store: KeyStore,
+    store: SecretStore,
     clock: Clock,
 }
 
 impl ApiKeyAuthenticator {
     #[must_use]
-    pub fn new(store: KeyStore) -> Self {
+    pub fn new(store: SecretStore) -> Self {
         Self {
             store,
             clock: Clock::system(0),
@@ -53,7 +63,7 @@ impl ApiKeyAuthenticator {
 
     /// The keys this verifies against.
     #[must_use]
-    pub fn store(&self) -> &KeyStore {
+    pub fn store(&self) -> &SecretStore {
         &self.store
     }
 }
@@ -80,14 +90,15 @@ impl Authenticator for ApiKeyAuthenticator {
             return Err(AuthenticateError::new("the key presented is empty"));
         }
         let hash = sha256(secret.as_bytes());
-        let Some(key) = self.store.holding(&presented.value, &hash) else {
+        let Some(key) = self
+            .store
+            .holding_where(&hash, |key| is_named(key, &presented.value))
+        else {
             return Ok(Verified::Refused);
         };
-        self.clock
-            .admits(Window::until(key.expiry()))
-            .map_err(|outside| {
-                AuthenticateError::new(format!("the key '{}' {outside}", key.id()))
-            })?;
+        self.clock.admits(key.window()).map_err(|outside| {
+            AuthenticateError::new(format!("the key '{}' {outside}", key.name()))
+        })?;
         Ok(Verified::Proven)
     }
 }
@@ -101,7 +112,7 @@ mod tests {
     const NOW: i64 = 1_800_000_000;
 
     fn verifier() -> ApiKeyAuthenticator {
-        let mut store = KeyStore::new();
+        let mut store = SecretStore::new();
         store.insert("partner-x", "k-7f3a9c2e51d84b60", None);
         store.insert("partner-y", "k-0badc0de0badc0de", Some(NOW + 60));
         store.insert("partner-z", "k-expired-yesterday", Some(NOW - 86_400));
@@ -109,8 +120,23 @@ mod tests {
     }
 
     fn digest_of_partner_x(verifier: &ApiKeyAuthenticator) -> String {
-        let mut named = verifier.store().named("partner-x");
-        named.next().expect("held").digest()
+        let mut named = verifier
+            .store()
+            .iter()
+            .filter(|key| key.name() == "partner-x");
+        identify::api_key::digest_name(named.next().expect("held").hash())
+    }
+
+    #[test]
+    fn a_key_is_named_by_its_id_or_by_the_first_eight_bytes_of_its_sha_256() {
+        // SHA-256("abc") = ba7816bf 8f01cfea …, FIPS 180-2 appendix B.1.
+        let mut store = SecretStore::new();
+        store.insert("abc-key", "abc", None);
+        let key = store.iter().next().expect("held");
+        assert!(is_named(key, "abc-key"));
+        assert!(is_named(key, "sha256:ba7816bf8f01cfea"));
+        assert!(!is_named(key, "sha256:ba7816bf8f01cfeb"));
+        assert!(!is_named(key, "abc"));
     }
 
     fn claim(id: &str, key: &str) -> Presented {
