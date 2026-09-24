@@ -20,32 +20,14 @@
 
 pub mod store;
 
-pub use store::{DIGEST_PREFIX, Key, KeyStore};
+pub use store::{Key, KeyStore};
 
+use authenticate::clock::{Clock, Window};
 use authenticate::store::sha256;
 use authenticate::{AuthenticateError, Authenticator, Presented};
 use context::Verified;
-use std::time::{SystemTime, UNIX_EPOCH};
+use identify::evidence::{self, API_KEY};
 use xcore::{Mechanism, mechanism};
-
-/// The proof name this verifier reads off a `Presented`: the key itself.
-pub const PROOF: &str = "api-key";
-
-/// The evidence name the first gate says where the key was found under:
-/// `header:<name>` or `query:<name>`. Not read here; it reaches the record.
-pub const SOURCE: &str = "api-key.source";
-
-type Clock = Box<dyn Fn() -> i64 + Send + Sync>;
-
-/// Seconds since the Unix epoch, now.
-#[must_use]
-pub fn now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| {
-            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
-        })
-}
 
 /// Verifies an `api-key` claim with an `api-key` proof against a key store.
 pub struct ApiKeyAuthenticator {
@@ -58,14 +40,14 @@ impl ApiKeyAuthenticator {
     pub fn new(store: KeyStore) -> Self {
         Self {
             store,
-            clock: Box::new(now),
+            clock: Clock::system(0),
         }
     }
 
     /// Where the time comes from; the tests pin it.
     #[must_use]
     pub fn with_clock(mut self, clock: impl Fn() -> i64 + Send + Sync + 'static) -> Self {
-        self.clock = Box::new(clock);
+        self.clock = self.clock.reading(clock);
         self
     }
 
@@ -88,9 +70,9 @@ impl Authenticator for ApiKeyAuthenticator {
                 "'{name}' was presented and this authenticator verifies api-key"
             )));
         }
-        let secret = presented.proof(PROOF).ok_or_else(|| {
+        let secret = presented.proof(evidence::API_KEY).ok_or_else(|| {
             AuthenticateError::new(format!(
-                "no '{PROOF}' proof was presented with the key '{}'",
+                "no '{API_KEY}' proof was presented with the key '{}'",
                 presented.value
             ))
         })?;
@@ -101,15 +83,11 @@ impl Authenticator for ApiKeyAuthenticator {
         let Some(key) = self.store.holding(&presented.value, &hash) else {
             return Ok(Verified::Refused);
         };
-        let now = (self.clock)();
-        if let Some(expiry) = key.expiry()
-            && now >= expiry
-        {
-            return Err(AuthenticateError::new(format!(
-                "the key '{}' expired at {expiry} and it is {now}",
-                key.id()
-            )));
-        }
+        self.clock
+            .admits(Window::until(key.expiry()))
+            .map_err(|outside| {
+                AuthenticateError::new(format!("the key '{}' {outside}", key.id()))
+            })?;
         Ok(Verified::Proven)
     }
 }
@@ -136,7 +114,7 @@ mod tests {
     }
 
     fn claim(id: &str, key: &str) -> Presented {
-        Presented::passed(mechanism::api_key(), id).with_proof(PROOF, key)
+        Presented::passed(mechanism::api_key(), id).with_proof(evidence::API_KEY, key)
     }
 
     #[test]
@@ -158,9 +136,9 @@ mod tests {
         // A key with no id in it is named by its digest, as the first gate
         // writes it, with where it was found as evidence.
         let digest = digest_of_partner_x(&verifier);
-        assert!(digest.starts_with(DIGEST_PREFIX) && digest.len() == 23);
-        let by_digest =
-            claim(&digest, "k-7f3a9c2e51d84b60").with_evidence(SOURCE, "header:x-api-key");
+        assert!(digest.starts_with(identify::api_key::DIGEST_PREFIX) && digest.len() == 23);
+        let by_digest = claim(&digest, "k-7f3a9c2e51d84b60")
+            .with_evidence(evidence::API_KEY_SOURCE, "header:x-api-key");
         assert_eq!(
             verifier.verify(&by_digest).expect("verified"),
             Verified::Proven

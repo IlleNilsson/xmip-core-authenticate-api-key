@@ -18,8 +18,15 @@ path = "src/lib.rs"
 # (repository-model.md), and on no sibling (ADR-0050 section 6). The
 # mechanism catalog is xmip-core's and the verdict is xmip-core-context's.
 authenticate = { package = "xmip-core-authenticate", git = "https://github.com/IlleNilsson/xmip-core-authenticate", branch = "main" }
+# identify for the names a claim carries across the gates (identify::evidence),
+# declared once for the first gate that writes them and this one that reads.
+identify = { package = "xmip-core-identify", git = "https://github.com/IlleNilsson/xmip-core-identify", branch = "main" }
 xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
 context = { package = "xmip-core-context", git = "https://github.com/IlleNilsson/xmip-core-context", branch = "main" }
+
+[dev-dependencies]
+# The estate's hex, to spell a hash out in the tests.
+codec = { package = "xmip-core-library-codec", git = "https://github.com/IlleNilsson/xmip-core-library-codec", branch = "main" }
 
 [lints.rust]
 unsafe_code = "forbid"
