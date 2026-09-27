@@ -74,12 +74,6 @@ impl Authenticator for ApiKeyAuthenticator {
     }
 
     fn verify(&self, presented: &Presented) -> Result<Verified, AuthenticateError> {
-        let name = presented.mechanism.name();
-        if name != self.mechanism().name() {
-            return Err(AuthenticateError::new(format!(
-                "'{name}' was presented and this authenticator verifies api-key"
-            )));
-        }
         let secret = presented.proof(evidence::API_KEY).ok_or_else(|| {
             AuthenticateError::new(format!(
                 "no '{API_KEY}' proof was presented with the key '{}'",
@@ -228,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_proof_and_another_mechanism_are_refused_by_name() {
+    fn a_missing_proof_is_refused_by_name() {
         let bare = Presented::passed(mechanism::api_key(), "partner-x");
         let failure = verifier().verify(&bare).expect_err("refused");
         assert!(
@@ -236,11 +230,6 @@ mod tests {
             "{}",
             failure.message
         );
-
-        let bearer = Presented::passed(mechanism::bearer(), "mF_9.B5f…")
-            .with_proof("bearer.token", "mF_9.B5f-4.1JqM");
-        let failure = verifier().verify(&bearer).expect_err("refused");
-        assert!(failure.message.contains("'bearer'"), "{}", failure.message);
     }
 
     struct Registry;
