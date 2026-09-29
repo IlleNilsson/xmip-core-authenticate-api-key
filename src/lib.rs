@@ -107,17 +107,17 @@ mod tests {
 
     fn verifier() -> ApiKeyAuthenticator {
         let mut store = SecretStore::new();
-        store.insert("partner-x", "k-7f3a9c2e51d84b60", None);
-        store.insert("partner-y", "k-0badc0de0badc0de", Some(NOW + 60));
-        store.insert("partner-z", "k-expired-yesterday", Some(NOW - 86_400));
+        store.insert("party-x", "k-7f3a9c2e51d84b60", None);
+        store.insert("party-y", "k-0badc0de0badc0de", Some(NOW + 60));
+        store.insert("party-z", "k-expired-yesterday", Some(NOW - 86_400));
         ApiKeyAuthenticator::new(store).with_clock(|| NOW)
     }
 
-    fn digest_of_partner_x(verifier: &ApiKeyAuthenticator) -> String {
+    fn digest_of_party_x(verifier: &ApiKeyAuthenticator) -> String {
         let mut named = verifier
             .store()
             .iter()
-            .filter(|key| key.name() == "partner-x");
+            .filter(|key| key.name() == "party-x");
         identify::api_key::digest_name(named.next().expect("held").hash())
     }
 
@@ -142,20 +142,20 @@ mod tests {
         let verifier = verifier();
         assert_eq!(
             verifier
-                .verify(&claim("partner-x", "k-7f3a9c2e51d84b60"))
+                .verify(&claim("party-x", "k-7f3a9c2e51d84b60"))
                 .expect("verified"),
             Verified::Proven
         );
         // Not yet expired is still good.
         assert_eq!(
             verifier
-                .verify(&claim("partner-y", "k-0badc0de0badc0de"))
+                .verify(&claim("party-y", "k-0badc0de0badc0de"))
                 .expect("verified"),
             Verified::Proven
         );
         // A key with no id in it is named by its digest, as the first gate
         // writes it, with where it was found as evidence.
-        let digest = digest_of_partner_x(&verifier);
+        let digest = digest_of_party_x(&verifier);
         assert!(digest.starts_with(identify::api_key::DIGEST_PREFIX) && digest.len() == 23);
         let by_digest = claim(&digest, "k-7f3a9c2e51d84b60")
             .with_evidence(evidence::API_KEY_SOURCE, "header:x-api-key");
@@ -169,7 +169,7 @@ mod tests {
     fn a_key_the_store_does_not_hold_is_refused() {
         assert_eq!(
             verifier()
-                .verify(&claim("partner-x", "k-7f3a9c2e51d84b61"))
+                .verify(&claim("party-x", "k-7f3a9c2e51d84b61"))
                 .expect("verified"),
             Verified::Refused
         );
@@ -178,19 +178,19 @@ mod tests {
     #[test]
     fn an_expired_key_is_refused_saying_when_it_expired() {
         let failure = verifier()
-            .verify(&claim("partner-z", "k-expired-yesterday"))
+            .verify(&claim("party-z", "k-expired-yesterday"))
             .expect_err("refused");
         assert_eq!(
             failure.message,
             format!(
-                "the key 'partner-z' expired at {} and it is {NOW}",
+                "the key 'party-z' expired at {} and it is {NOW}",
                 NOW - 86_400
             )
         );
         // The moment of expiry is already too late.
         let at_expiry = ApiKeyAuthenticator::new(verifier().store().clone())
             .with_clock(|| NOW + 60)
-            .verify(&claim("partner-y", "k-0badc0de0badc0de"))
+            .verify(&claim("party-y", "k-0badc0de0badc0de"))
             .expect_err("refused");
         assert!(
             at_expiry.message.contains("expired"),
@@ -205,25 +205,23 @@ mod tests {
         // A good key under another key's name proves nothing about that name.
         assert_eq!(
             verifier
-                .verify(&claim("partner-y", "k-7f3a9c2e51d84b60"))
+                .verify(&claim("party-y", "k-7f3a9c2e51d84b60"))
                 .expect("verified"),
             Verified::Refused
         );
         // Nor does a name the store holds with a key it does not.
-        let digest = digest_of_partner_x(&verifier);
+        let digest = digest_of_party_x(&verifier);
         assert_eq!(
             verifier.verify(&claim(&digest, "guess")).expect("verified"),
             Verified::Refused
         );
-        let empty = verifier
-            .verify(&claim("partner-x", ""))
-            .expect_err("refused");
+        let empty = verifier.verify(&claim("party-x", "")).expect_err("refused");
         assert!(empty.message.contains("empty"), "{}", empty.message);
     }
 
     #[test]
     fn a_missing_proof_is_refused_by_name() {
-        let bare = Presented::passed(mechanism::api_key(), "partner-x");
+        let bare = Presented::passed(mechanism::api_key(), "party-x");
         let failure = verifier().verify(&bare).expect_err("refused");
         assert!(
             failure.message.contains("'api-key' proof"),
@@ -236,7 +234,7 @@ mod tests {
 
     impl PartyRegistry for Registry {
         fn resolve(&self, mechanism: &str, _purpose: Purpose, value: &str) -> Option<PartyId> {
-            (mechanism == "api-key" && value == "partner-x").then(|| PartyId::new(11))
+            (mechanism == "api-key" && value == "party-x").then(|| PartyId::new(11))
         }
     }
 
@@ -244,7 +242,7 @@ mod tests {
     fn through_the_gate_a_proven_key_resolves_to_its_party_and_stays_off_the_record() {
         let verifier = verifier();
         let acceptance = Acceptance::closed().accepting(&mechanism::api_key());
-        let presented = claim("partner-x", "k-7f3a9c2e51d84b60");
+        let presented = claim("party-x", "k-7f3a9c2e51d84b60");
         assert!(!format!("{presented:?}").contains("k-7f3a9c2e51d84b60"));
 
         let identity =
@@ -252,7 +250,7 @@ mod tests {
         assert_eq!(identity.party_id, Some(PartyId::new(11)));
         assert_eq!(identity.verified, Verified::Proven);
 
-        let expired = claim("partner-z", "k-expired-yesterday");
+        let expired = claim("party-z", "k-expired-yesterday");
         let refusal =
             authenticate(&acceptance, &[&verifier], &Registry, &expired).expect_err("refused");
         assert!(
