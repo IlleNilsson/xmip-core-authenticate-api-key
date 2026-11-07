@@ -101,6 +101,7 @@ impl Authenticator for ApiKeyAuthenticator {
 mod tests {
     use super::*;
     use authenticate::{Acceptance, PartyRegistry, Refusal, authenticate};
+    use std::assert_matches;
     use xcore::{PartyId, Purpose};
 
     const NOW: i64 = 1_800_000_000;
@@ -253,8 +254,9 @@ mod tests {
         let expired = claim("party-z", "k-expired-yesterday");
         let refusal =
             authenticate(&acceptance, &[&verifier], &Registry, &expired).expect_err("refused");
-        assert!(
-            matches!(&refusal, Refusal::NotProven { detail, .. } if detail.contains("expired")),
+        assert_matches!(
+            &refusal,
+            Refusal::NotProven { detail, .. } if detail.contains("expired"),
             "{refusal}"
         );
     }
