@@ -25,7 +25,7 @@ use authenticate::AuthenticateError;
 use authenticate::Authenticator;
 use authenticate::clock::Clock;
 use authenticate::secret::{Secret, SecretStore};
-use authenticate::store::sha256;
+use codec::digest::sha256;
 use context::Verified;
 use identify::Presented;
 use identify::evidence::{self, API_KEY};

@@ -23,9 +23,8 @@ authenticate = { package = "xmip-core-authenticate", git = "https://github.com/I
 identify = { package = "xmip-core-identify", git = "https://github.com/IlleNilsson/xmip-core-identify", branch = "main" }
 xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
 context = { package = "xmip-core-context", git = "https://github.com/IlleNilsson/xmip-core-context", branch = "main" }
-
-[dev-dependencies]
-# The estate's hex, to spell a hash out in the tests.
+# The estate's SHA-256 a key is held by (codec::digest), and its hex, which
+# the tests spell a hash out in.
 codec = { package = "xmip-core-library-codec", git = "https://github.com/IlleNilsson/xmip-core-library-codec", branch = "main" }
 
 [lints.rust]
